@@ -1,0 +1,22 @@
+# Managed by OpenCode Most systemd installer. Do not edit in place.
+[Unit]
+Description=OpenCode Most Secure MCP Tunnel
+Requires=opencode-most.service
+After=opencode-most.service network-online.target
+PartOf=opencode-most.service opencode-most.target
+
+[Service]
+Type=simple
+WorkingDirectory=@REPO_DIR@
+Environment=PATH=@PATH@
+Environment=BRIDGE_HEALTH_URL=@BRIDGE_HEALTH_URL@
+LoadCredential=control-plane-api-key:@TUNNEL_KEY@
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 30); do /usr/bin/curl -fsS "$BRIDGE_HEALTH_URL" >/dev/null && exit 0; sleep 1; done; exit 1'
+ExecStart=@REPO_DIR@/scripts/systemd/run-tunnel-with-credential.sh @TUNNEL_BIN@ run --profile opencode-bridge
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+[Install]
+WantedBy=opencode-most.target

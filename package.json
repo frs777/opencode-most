@@ -1,11 +1,12 @@
 {
-  "name": "opencode-chatgpt-bridge",
-  "version": "0.1.0",
-  "description": "Local MCP bridge for ChatGPT and opencode.",
+  "name": "opencode-most",
+  "version": "1.0.0-beta.1",
+  "description": "A multi-agent ChatGPT to OpenCode bridge with secure tunnel integration.",
   "type": "module",
+  "packageManager": "pnpm@11.18.0",
   "license": "MIT",
   "bin": {
-    "opencode-chatgpt-bridge": "dist/cli.js"
+    "opencode-most": "dist/cli.js"
   },
   "files": [
     "dist",
@@ -23,7 +24,9 @@
     "validate": "pnpm run typecheck && pnpm test && pnpm run build",
     "install-service": "node dist/cli.js install-service",
     "uninstall-service": "node dist/cli.js uninstall-service",
-    "service-status": "node dist/cli.js service-status"
+    "service-status": "node dist/cli.js service-status",
+    "install-user-service": "bash scripts/systemd/install-user.sh",
+    "uninstall-user-service": "bash scripts/systemd/uninstall-user.sh"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

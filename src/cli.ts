@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import process from "node:process";
 import { execPath } from "node:process";
+import { ChildProcess } from "node:child_process";
 import { loadConfig } from "./config/env.js";
 import { initEnv } from "./config/bootstrap.js";
 import { createRuntime, startHttpServer } from "./server/http.js";
@@ -25,15 +26,15 @@ function getArgValue(name: string): string | undefined {
 }
 
 function printHelp(): void {
-  console.log(`opencode-chatgpt-bridge
+  console.log(`opencode-most
 
 Usage:
-  opencode-chatgpt-bridge init [--allowed-roots <path:path>]
-  opencode-chatgpt-bridge start [options]
-  opencode-chatgpt-bridge doctor [options]
-  opencode-chatgpt-bridge install-service
-  opencode-chatgpt-bridge uninstall-service
-  opencode-chatgpt-bridge service-status
+  opencode-most init [--allowed-roots <path:path>]
+  opencode-most start [options]
+  opencode-most doctor [options]
+  opencode-most install-service
+  opencode-most uninstall-service
+  opencode-most service-status
 
 Common options:
   --host <host>                  Bridge host, default 127.0.0.1
@@ -42,17 +43,17 @@ Common options:
   --token <token>                Bearer token for /mcp
   --tunnel cloudflare|tailscale|none
                                   Start Cloudflare quick tunnel or Tailscale Funnel
-  --tailscale-bin <bin>          Tailscale CLI path, default macOS app CLI
+  --tailscale-bin <bin>          Tailscale CLI path, default tailscale
   --opencode-bin <bin>           opencode binary, default opencode
 
 Background mode on macOS:
-  opencode-chatgpt-bridge install-service
-  opencode-chatgpt-bridge service-status
-  opencode-chatgpt-bridge uninstall-service
+  opencode-most install-service
+  opencode-most service-status
+  opencode-most uninstall-service
 
 Recommended first run:
-  opencode-chatgpt-bridge init --allowed-roots /Volumes/MOVESPEED/Documents/GitHub
-  opencode-chatgpt-bridge install-service
+  opencode-most init --allowed-roots /path/to/repos
+  opencode-most install-service
 `);
 }
 
@@ -82,7 +83,7 @@ async function main(): Promise<void> {
     const result = await initEnv({ allowedRoots: roots, force: hasFlag("--force") });
     if (result.created) {
       console.log(`Created ${result.path}`);
-      console.log("Next: run `pnpm run build && pnpm run install-service` or `opencode-chatgpt-bridge install-service`.");
+      console.log("Next: run `pnpm run build && pnpm run install-service` or `opencode-most install-service`.");
     } else {
       console.log(`${result.path} already exists. Use --force to overwrite.`);
     }
@@ -116,24 +117,40 @@ async function main(): Promise<void> {
     return;
   }
 
-  const runtime = createRuntime(config);
-  await startHttpServer(runtime);
-
-  const localUrl = `http://${config.host}:${config.port}`;
+  let tunnelProcess: { process: ChildProcess; url: Promise<string> } | undefined;
   let publicUrl: string | undefined;
 
-  if (config.tunnel === "cloudflare") {
-    console.log("Starting Cloudflare quick tunnel...");
-    const tunnel = startCloudflareTunnel(config.cloudflaredBin, localUrl);
-    publicUrl = await tunnel.url;
-    process.once("exit", () => tunnel.process.kill("SIGTERM"));
+  if (config.tunnel !== "none") {
+    // Disable auto-port fallback when tunneling: tunnel must point to a stable port
+    config.autoPort = false;
+    const localUrl = `http://${config.host}:${config.port}`;
+
+    if (config.tunnel === "cloudflare") {
+      console.log("Starting Cloudflare quick tunnel...");
+      tunnelProcess = startCloudflareTunnel(config.cloudflaredBin, localUrl);
+    } else if (config.tunnel === "tailscale") {
+      console.log("Starting Tailscale Funnel...");
+      tunnelProcess = startTailscaleFunnel(config.tailscaleBin, localUrl);
+    }
+
+    publicUrl = await tunnelProcess!.url;
+    const hostname = new URL(publicUrl).hostname;
+    if (!config.allowedHosts.includes(hostname)) {
+      config.allowedHosts.push(hostname);
+    }
+    process.once("exit", () => {
+      if (tunnelProcess) tunnelProcess.process.kill("SIGTERM");
+    });
   }
 
-  if (config.tunnel === "tailscale") {
-    console.log("Starting Tailscale Funnel...");
-    const tunnel = startTailscaleFunnel(config.tailscaleBin, localUrl);
-    publicUrl = await tunnel.url;
-    process.once("exit", () => tunnel.process.kill("SIGTERM"));
+  const runtime = createRuntime(config);
+  const localUrl = `http://${config.host}:${config.port}`;
+
+  try {
+    await startHttpServer(runtime);
+  } catch (error) {
+    tunnelProcess?.process.kill("SIGTERM");
+    throw error;
   }
 
   console.log(getSetupGuide({ config, localUrl, publicUrl, opencodeStatus }));

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import process from "node:process";
@@ -39,6 +40,47 @@ function pick(args: CliArgs, key: string, envKey: string, fallback?: string): st
   return fallback;
 }
 
+function readServiceUrl(): string | undefined {
+  const servicePath = join(homedir(), ".local", "state", "opencode", "service.json");
+  let contents: string;
+  try { contents = readFileSync(servicePath, "utf8"); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined; throw new Error(`Unable to read OpenCode service configuration: ${servicePath}`); }
+  try {
+    const value = (JSON.parse(contents) as { url?: unknown } | null)?.url;
+    if (value === undefined) return undefined;
+    if (typeof value !== "string" || !value.trim()) throw new Error();
+    const url = new URL(value);
+    if (!["http:", "https:"].includes(url.protocol)) throw new Error();
+    return url.toString().replace(/\/$/, "");
+  } catch { throw new Error(`Missing or invalid URL in OpenCode service configuration: ${servicePath}`); }
+}
+
+function readServicePassword(): string | undefined {
+  const servicePath = join(homedir(), ".local", "state", "opencode", "service.json");
+  let contents: string;
+
+  try {
+    contents = readFileSync(servicePath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw new Error(`Unable to read OpenCode service configuration: ${servicePath}`);
+  }
+
+  let config: unknown;
+  try {
+    config = JSON.parse(contents);
+  } catch {
+    throw new Error(`Invalid JSON in OpenCode service configuration: ${servicePath}`);
+  }
+
+  const password = (config as { password?: unknown } | null)?.password;
+  if (typeof password !== "string" || !password.trim()) {
+    throw new Error(`Missing or invalid password in OpenCode service configuration: ${servicePath}`);
+  }
+
+  return password;
+}
+
 function pickBoolean(args: CliArgs, key: string, envKey: string, fallback: boolean): boolean {
   const arg = args[key];
   if (typeof arg === "boolean") return arg;
@@ -57,9 +99,9 @@ function pickNumber(args: CliArgs, key: string, envKey: string, fallback: number
 }
 
 function parseList(value: string | undefined, fallback: string[]): string[] {
- const raw = value?.trim();
- const items = raw ? raw.split(",") : fallback;
- return [...new Set(items.map((item) => item.trim()).filter(Boolean))];
+  const raw = value?.trim();
+  const items = raw ? raw.split(",") : fallback;
+  return [...new Set(items.map((item) => item.trim()).filter(Boolean))];
 }
 
 function parseAllowedRoots(value?: string): string[] {
@@ -73,24 +115,36 @@ export function loadConfig(argv = process.argv.slice(2)): BridgeConfig {
   const allowedRoots = parseAllowedRoots(pick(args, "allowed-roots", "OPENCODE_BRIDGE_ALLOWED_ROOTS"));
   const tunnelRaw = pick(args, "tunnel", "OPENCODE_BRIDGE_TUNNEL", "none")?.toLowerCase();
   const tunnel = tunnelRaw === "cloudflare" ? "cloudflare" : tunnelRaw === "tailscale" ? "tailscale" : "none";
+  const bridgeToken = pick(args, "token", "OPENCODE_BRIDGE_TOKEN");
+
+  // Require bridge token when exposing via tunnel or non-loopback host
+  const host = pick(args, "host", "OPENCODE_BRIDGE_HOST", "127.0.0.1") ?? "127.0.0.1";
+  const isLoopbackHost = ["127.0.0.1", "localhost", "::1"].includes(host);
+  if ((tunnel !== "none" || !isLoopbackHost) && !bridgeToken) {
+    throw new Error(
+      `OPENCODE_BRIDGE_TOKEN is required when tunnel is "${tunnel}" or host is "${host}". ` +
+        "Set --token or OPENCODE_BRIDGE_TOKEN before exposing the bridge."
+    );
+  }
 
   return {
-    host: pick(args, "host", "OPENCODE_BRIDGE_HOST", "127.0.0.1") ?? "127.0.0.1",
+    host,
     port: pickNumber(args, "port", "OPENCODE_BRIDGE_PORT", 8787),
     autoPort: pickBoolean(args, "auto-port", "OPENCODE_BRIDGE_AUTO_PORT", true),
- allowedHosts: parseList(pick(args, "allowed-hosts", "OPENCODE_BRIDGE_ALLOWED_HOSTS"), ["127.0.0.1", "localhost", "hashimotoyugamac-mini.tailf9f6e3.ts.net"]),
+    allowedHosts: parseList(pick(args, "allowed-hosts", "OPENCODE_BRIDGE_ALLOWED_HOSTS"), ["127.0.0.1", "localhost"]),
     allowedRoots,
-    bridgeToken: pick(args, "token", "OPENCODE_BRIDGE_TOKEN"),
-    opencodeBaseUrl: pick(args, "opencode-url", "OPENCODE_BASE_URL"),
+    bridgeToken,
+    opencodeBaseUrl: readServiceUrl() ?? pick(args, "opencode-url", "OPENCODE_BASE_URL"),
     opencodeBin: pick(args, "opencode-bin", "OPENCODE_BIN", "opencode") ?? "opencode",
     opencodeHost: pick(args, "opencode-host", "OPENCODE_BRIDGE_OPENCODE_HOST", "127.0.0.1") ?? "127.0.0.1",
     opencodePortStart: pickNumber(args, "opencode-port-start", "OPENCODE_BRIDGE_OPENCODE_PORT_START", 4096),
     opencodeUsername: pick(args, "opencode-username", "OPENCODE_SERVER_USERNAME", "opencode") ?? "opencode",
-    opencodePassword: pick(args, "opencode-password", "OPENCODE_SERVER_PASSWORD"),
+    opencodePassword: readServicePassword() ?? pick(args, "opencode-password", "OPENCODE_SERVER_PASSWORD"),
+    opencodeServiceConfigPath: join(homedir(), ".local", "state", "opencode", "service.json"),
     stateDir: resolve(pick(args, "state-dir", "OPENCODE_BRIDGE_STATE_DIR", join(homedir(), ".opencode-chatgpt-bridge")) ?? join(homedir(), ".opencode-chatgpt-bridge")),
     tunnel,
     cloudflaredBin: pick(args, "cloudflared-bin", "CLOUDFLARED_BIN", "cloudflared") ?? "cloudflared",
- tailscaleBin: pick(args, "tailscale-bin", "TAILSCALE_BIN", "/Applications/Tailscale.app/Contents/MacOS/Tailscale") ?? "tailscale"
+    tailscaleBin: pick(args, "tailscale-bin", "TAILSCALE_BIN", "tailscale") ?? "tailscale"
   };
 }
 

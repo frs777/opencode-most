@@ -8,7 +8,7 @@ const cli = ["exec", "tsx", "src/cli.ts"];
 describe("CLI", () => {
   it("prints help", async () => {
     const result = await execFileAsync("pnpm", [...cli, "help"], { timeout: 10000 });
-    expect(result.stdout).toContain("opencode-chatgpt-bridge init");
-    expect(result.stdout).toContain("opencode-chatgpt-bridge doctor");
+    expect(result.stdout).toContain("opencode-most init");
+    expect(result.stdout).toContain("opencode-most doctor");
   });
 });

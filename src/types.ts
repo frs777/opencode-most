@@ -13,6 +13,7 @@ export type BridgeConfig = {
   opencodePortStart: number;
   opencodeUsername: string;
   opencodePassword?: string;
+  opencodeServiceConfigPath: string;
   stateDir: string;
   tunnel: "none" | "cloudflare" | "tailscale";
  tailscaleBin: string;
@@ -36,14 +37,20 @@ export type OpencodeMessagePart = {
   [key: string]: unknown;
 };
 
-export type OpencodeMessage = {
-  info: Record<string, unknown>;
-  parts: OpencodeMessagePart[];
+export type OpencodeMessage = Record<string, unknown> & {
+  id?: string;
+  type?: string;
+  agent?: string;
+  model?: { id?: string; providerID?: string; variant?: string };
+  content?: OpencodeMessagePart[];
+  text?: string;
 };
 
 export type OpencodeSession = Record<string, unknown> & {
   id?: string;
   title?: string;
+  location?: { directory?: string };
+  projectId?: string;
 };
 
 export type OpencodeDiff = Record<string, unknown> & {

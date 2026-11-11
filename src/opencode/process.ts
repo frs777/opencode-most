@@ -85,7 +85,9 @@ export class OpencodeProcessManager {
     return new OpencodeClient({
       baseUrl: managed.baseUrl,
       username: managed.username,
-      password: managed.password
+      password: managed.password,
+      serviceConfigPath: this.config.opencodeServiceConfigPath,
+      directory: managed.repoPath
     });
   }
 

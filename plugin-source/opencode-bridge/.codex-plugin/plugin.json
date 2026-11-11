@@ -1,0 +1,18 @@
+{
+  "apps": "./.app.json",
+  "author": {
+    "name": "App developer"
+  },
+  "description": "Połączenie serwerów OpenCode v2.5 z ChatGPT web.",
+  "interface": {
+    "capabilities": [],
+    "category": "Other",
+    "defaultPrompt": null,
+    "developerName": "App developer",
+    "displayName": "opencode-bridge",
+    "longDescription": "Most MCP do sterowania serwerami i sesjami OpenCode V2 z ChatGPT. Udostępnia 22 akcje w aktualnym katalogu aplikacji ChatGPT. Obsługuje trwałe sesje, wybór modeli i agentów, diagnostykę oraz równoległą pracę wielu agentów sprawdzoną produkcyjnie.",
+    "shortDescription": "Połączenie OpenCode v2 z ChatGPT"
+  },
+  "name": "opencode-bridge",
+  "version": "1.0.1"
+}

@@ -1,0 +1,9 @@
+# Managed by OpenCode Most systemd installer. Do not edit in place.
+[Unit]
+Description=OpenCode Most Bridge and Tunnel
+PartOf=graphical-session.target
+Requires=opencode-most.service opencode-most-tunnel.service
+After=opencode-most.service opencode-most-tunnel.service
+
+[Install]
+WantedBy=graphical-session.target

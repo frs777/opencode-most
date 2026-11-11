@@ -7,3 +7,9 @@ coverage
 .DS_Store
 *.log
 .opencode-chatgpt-bridge.json
+
+# Local-only OpenCode agent setup and private ChatGPT App binding
+/.agents/
+/agenci.md
+/plugin-source/original/
+/plugin-source/*.tar.gz

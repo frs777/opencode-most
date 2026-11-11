@@ -1,9 +1,13 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { isAbsolute, resolve } from "node:path";
 import { z } from "zod/v4";
 import type { BridgeConfig, JsonValue } from "../types.js";
 import { listProjects, validateRepoPath } from "../security/paths.js";
 import { OpencodeProcessManager } from "../opencode/process.js";
 import { StateStore } from "../state/store.js";
+import { validateModelAgentSelection } from "../opencode/selection.js";
+import { OpencodeSessionCli } from "../opencode/session-cli.js";
+import { deleteCompletedSession, deleteSessionByLocator } from "./session-lifecycle.js";
 import { safeTool } from "./results.js";
 
 type RegisterContext = {
@@ -12,16 +16,36 @@ type RegisterContext = {
   state: StateStore;
 };
 
+export const deleteSessionByLocatorInputSchema = {
+  repoPath: z.string().min(1),
+  sessionDirectory: z.string().min(1),
+  title: z.string().min(1)
+};
+
 function json(value: unknown): JsonValue {
   return JSON.parse(JSON.stringify(value)) as JsonValue;
 }
 
+function sessionSummary(session: Record<string, unknown>) {
+  return {
+    id: session.id ?? null,
+    title: session.title ?? null,
+    agent: session.agent ?? null,
+    model: session.model ?? null,
+    outcome: session.outcome ?? null,
+    time: session.time ?? null,
+    location: session.location ?? (typeof session.directory === "string" ? { directory: session.directory } : null)
+  };
+}
+
 export function createBridgeMcpServer(ctx: RegisterContext): McpServer {
+  const sessionCli = new OpencodeSessionCli(ctx.config.opencodeBin);
   const server = new McpServer(
-    { name: "opencode-chatgpt-bridge", version: "0.1.0" },
+    { name: "opencode-chatgpt-bridge", version: "1.0.0-beta.1" },
     {
+      capabilities: { logging: {} },
       instructions:
-        "Use this server to control local opencode sessions. Always validate a repo with list_projects or create_session first. Prefer async messages for long work, then poll get_session_status/get_messages and review get_diff before claiming changes are complete."
+        "Use this server to control local OpenCode sessions. Keep one persistent active session per repository: call opencode_get_active_session(repoPath), then send subsequent messages with repoPath (do not create a session per request). Attach an existing session only when no active mapping exists. After async sends, use opencode_wait_for_completion instead of repeated polling. Select only enabled models and compatible primary agents using opencode_capabilities and opencode_select_model_agent. Delete mapped sessions with opencode_delete_session. For unmapped worktree sessions, use opencode_delete_session_by_locator with the exact title and directory; both paths refuse active sessions and clean matching Bridge mappings. Review get_diff before claiming code changes are complete."
     }
   );
 
@@ -103,28 +127,118 @@ export function createBridgeMcpServer(ctx: RegisterContext): McpServer {
         const validated = await validateRepoPath(repoPath, ctx.config.allowedRoots);
         const managed = await ctx.processManager.ensure(validated);
         const client = ctx.processManager.clientFor(managed);
-        const session = await client.createSession(title, parentID);
+        const session = await client.createSession(title, parentID, validated);
         const opencodeSessionId = String(session.id ?? session.ID ?? session.sessionID ?? "");
         if (!opencodeSessionId) throw new Error(`opencode returned a session without an id: ${JSON.stringify(session)}`);
+        const confirmed = await client.getSession(opencodeSessionId);
+        if (confirmed.location?.directory !== validated) {
+          throw new Error(`OpenCode created session in ${confirmed.location?.directory ?? "<none>"}, expected ${validated}. Bridge mapping was not created.`);
+        }
         const bridge = await ctx.state.createSession({
           opencodeSessionId,
           repoPath: validated,
           baseUrl: managed.baseUrl,
           title
         });
-        return { ok: true, bridgeSession: json(bridge), opencodeSession: json(session) };
+        await ctx.state.setActiveSession(validated, bridge.bridgeSessionId);
+        return { ok: true, active: true, bridgeSession: json(bridge), opencodeSession: json(session) };
       })
   );
 
   server.registerTool(
     "opencode_list_sessions",
     {
-      title: "List bridge sessions",
-      description: "List bridge sessions previously created through this MCP server.",
-      inputSchema: {},
+      title: "List opencode sessions",
+      description: "List bridge mappings, or live OpenCode sessions for a repoPath when supplied.",
+      inputSchema: { repoPath: z.string().optional() },
       annotations: { readOnlyHint: true, openWorldHint: false }
     },
-    async () => safeTool(async () => ({ sessions: json(await ctx.state.listSessions()) }))
+    async ({ repoPath }) =>
+      safeTool(async () => {
+        if (!repoPath) return { repoPath: null, sessions: json(await ctx.state.listSessions()) };
+        const validated = await validateRepoPath(repoPath, ctx.config.allowedRoots);
+        const managed = await ctx.processManager.ensure(validated);
+        const client = ctx.processManager.clientFor(managed);
+        const [apiSessions, cliSessions, mappings] = await Promise.all([
+          client.listSessions(),
+          sessionCli.listSessions(validated),
+          ctx.state.listSessions()
+        ]);
+        const sessionsById = new Map<string, Record<string, unknown>>();
+        for (const session of cliSessions) {
+          if (session.id) sessionsById.set(session.id, session);
+        }
+        for (const session of apiSessions) {
+          if (session.id) sessionsById.set(session.id, { ...sessionsById.get(session.id), ...session });
+        }
+        return {
+          repoPath: validated,
+          sessions: json([...sessionsById.values()].map((session) => ({
+            ...sessionSummary(session),
+            bridgeSessionId: mappings.find(
+              (mapping) => mapping.opencodeSessionId === session.id
+            )?.bridgeSessionId ?? null
+          })))
+        };
+      })
+  );
+
+  server.registerTool(
+    "opencode_attach_session",
+    {
+      title: "Attach existing opencode session",
+      description: "Attach an existing OpenCode session to the bridge without creating a new OpenCode session.",
+      inputSchema: { repoPath: z.string().min(1), opencodeSessionId: z.string().min(1) },
+      annotations: { readOnlyHint: false, openWorldHint: false }
+    },
+    async ({ repoPath, opencodeSessionId }) =>
+      safeTool(async () => {
+        const validated = await validateRepoPath(repoPath, ctx.config.allowedRoots);
+        const managed = await ctx.processManager.ensure(validated);
+        const client = ctx.processManager.clientFor(managed);
+        const session = await client.getSession(opencodeSessionId);
+        const existing = await ctx.state.findSession(validated, opencodeSessionId);
+        const bridgeSession = existing ?? await ctx.state.createSession({
+          opencodeSessionId,
+          repoPath: validated,
+          baseUrl: managed.baseUrl,
+          title: typeof session.title === "string" ? session.title : undefined
+        });
+        await ctx.state.setActiveSession(validated, bridgeSession.bridgeSessionId);
+        return { ok: true, attached: true, active: true, bridgeSession: json(bridgeSession), opencodeSession: json(sessionSummary(session)) };
+      })
+  );
+
+  server.registerTool(
+    "opencode_get_active_session",
+    {
+      title: "Get active opencode session",
+      description: "Get the persistent active OpenCode session for a repository. Use this to continue the same session across separate ChatGPT requests.",
+      inputSchema: { repoPath: z.string().min(1) },
+      annotations: { readOnlyHint: true, openWorldHint: false }
+    },
+    async ({ repoPath }) =>
+      safeTool(async () => {
+        const validated = await validateRepoPath(repoPath, ctx.config.allowedRoots);
+        const session = await ctx.state.getActiveSession(validated);
+        return { repoPath: validated, activeSession: session ? json(session) : null };
+      })
+  );
+
+  server.registerTool(
+    "opencode_set_active_session",
+    {
+      title: "Set active opencode session",
+      description: "Select which existing Bridge session should receive future messages for this repository.",
+      inputSchema: { repoPath: z.string().min(1), bridgeSessionId: z.string().min(1) },
+      annotations: { readOnlyHint: false, openWorldHint: false }
+    },
+    async ({ repoPath, bridgeSessionId }) =>
+      safeTool(async () => {
+        const validated = await validateRepoPath(repoPath, ctx.config.allowedRoots);
+        const session = await ctx.state.setActiveSession(validated, bridgeSessionId);
+        return { ok: true, repoPath: validated, activeSession: json(session) };
+      })
   );
 
   server.registerTool(
@@ -150,25 +264,74 @@ export function createBridgeMcpServer(ctx: RegisterContext): McpServer {
   );
 
   server.registerTool(
+    "opencode_delete_session",
+    {
+      title: "Delete completed OpenCode session",
+      description: "Permanently delete an idle/completed OpenCode session by its exact Bridge session ID. Refuses running sessions and removes the Bridge mapping only after OpenCode confirms deletion.",
+      inputSchema: { bridgeSessionId: z.string().min(1) },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false }
+    },
+    async ({ bridgeSessionId }) =>
+      safeTool(async () => {
+        const bridge = await ctx.state.getSession(bridgeSessionId);
+        const managed = await ctx.processManager.ensure(bridge.repoPath);
+        const client = ctx.processManager.clientFor(managed);
+        return await deleteCompletedSession(bridgeSessionId, client, ctx.state);
+      })
+  );
+
+  server.registerTool(
+    "opencode_delete_session_by_locator",
+    {
+      title: "Delete unmapped OpenCode session by exact locator",
+      description: "Find and permanently delete an idle OpenCode session without a Bridge ID. Requires repoPath (an existing allowed CLI search root), sessionDirectory (the exact stored session directory; it need not still exist), and title (exact, case-sensitive). Refuses missing or ambiguous matches and running sessions. Uses the official opencode session delete CLI command and removes any Bridge mappings only after deletion succeeds.",
+      inputSchema: deleteSessionByLocatorInputSchema,
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false }
+    },
+    async ({ repoPath, sessionDirectory, title }) =>
+      safeTool(async () => {
+        if (!isAbsolute(sessionDirectory) || resolve(sessionDirectory) !== sessionDirectory) {
+          throw new Error("sessionDirectory must be a normalized absolute path");
+        }
+        const validated = await validateRepoPath(repoPath, ctx.config.allowedRoots);
+        const managed = await ctx.processManager.ensure(validated);
+        const client = ctx.processManager.clientFor(managed);
+        return await deleteSessionByLocator({
+          searchRoot: validated,
+          sessionDirectory,
+          title
+        }, sessionCli, client, ctx.state);
+      })
+  );
+
+  server.registerTool(
     "opencode_send_message",
     {
       title: "Send opencode message",
-      description: "Send a prompt to an opencode session. Use async=true for long-running coding tasks.",
+      description: "Send a prompt to the persistent active session for repoPath. Pass bridgeSessionId only when deliberately targeting a different session; do not create a new session per message.",
       inputSchema: {
-        bridgeSessionId: z.string().min(1),
+        bridgeSessionId: z.string().min(1).optional(),
+        repoPath: z.string().min(1).optional(),
         text: z.string().min(1),
         async: z.boolean().default(true),
         providerID: z.string().optional(),
         modelID: z.string().optional(),
+        variant: z.string().optional(),
         agent: z.string().optional(),
-        system: z.string().optional(),
         noReply: z.boolean().optional()
       },
       annotations: { readOnlyHint: false, openWorldHint: false }
     },
     async (input) =>
       safeTool(async () => {
-        const bridge = await ctx.state.getSession(input.bridgeSessionId);
+        if (!input.bridgeSessionId && !input.repoPath) throw new Error("Provide repoPath to continue its active session, or bridgeSessionId to target a specific session");
+        const validatedRepo = input.repoPath ? await validateRepoPath(input.repoPath, ctx.config.allowedRoots) : undefined;
+        const bridge = input.bridgeSessionId
+          ? await ctx.state.getSession(input.bridgeSessionId)
+          : await ctx.state.getActiveSession(validatedRepo!);
+        if (!bridge) throw new Error(`No active Bridge session for repository ${validatedRepo}. Attach or create a session first.`);
+        if (validatedRepo && bridge.repoPath !== validatedRepo) throw new Error("bridgeSessionId does not belong to repoPath");
+        if (input.bridgeSessionId) await ctx.state.setActiveSession(bridge.repoPath, bridge.bridgeSessionId);
         const managed = await ctx.processManager.ensure(bridge.repoPath);
         const client = ctx.processManager.clientFor(managed);
         const response = await client.sendMessage({
@@ -177,12 +340,59 @@ export function createBridgeMcpServer(ctx: RegisterContext): McpServer {
           async: input.async,
           providerID: input.providerID,
           modelID: input.modelID,
+          variant: input.variant,
           agent: input.agent,
-          system: input.system,
           noReply: input.noReply
         });
-        await ctx.state.updateSession(input.bridgeSessionId, {});
-        return { ok: true, async: input.async, response: json(response ?? null) };
+        await ctx.state.updateSession(bridge.bridgeSessionId, {});
+        return { ok: true, async: input.async, bridgeSession: json(bridge), response: json(response ?? null) };
+      })
+  );
+
+  server.registerTool(
+    "opencode_wait_for_completion",
+    {
+      title: "Wait for opencode completion",
+      description: "Wait on OpenCode's native SSE event stream until the active session for repoPath becomes idle. If it already finished, return immediately. Prefer repoPath to continue the same repository session across requests; use bridgeSessionId only to target a different session.",
+      inputSchema: {
+        bridgeSessionId: z.string().min(1).optional(),
+        repoPath: z.string().min(1).optional(),
+        timeoutSeconds: z.number().int().min(1).max(600).default(180)
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false }
+    },
+    async ({ bridgeSessionId, repoPath, timeoutSeconds }) =>
+      safeTool(async () => {
+        if (!bridgeSessionId && !repoPath) throw new Error("Provide repoPath to wait for its active session, or bridgeSessionId to target a specific session");
+        const validatedRepo = repoPath ? await validateRepoPath(repoPath, ctx.config.allowedRoots) : undefined;
+        const bridge = bridgeSessionId
+          ? await ctx.state.getSession(bridgeSessionId)
+          : await ctx.state.getActiveSession(validatedRepo!);
+        if (!bridge) throw new Error(`No active Bridge session for repository ${validatedRepo}. Attach or create a session first.`);
+        if (validatedRepo && bridge.repoPath !== validatedRepo) throw new Error("bridgeSessionId does not belong to repoPath");
+        const managed = await ctx.processManager.ensure(bridge.repoPath);
+        const client = ctx.processManager.clientFor(managed);
+        const event = await client.waitForSessionIdle(bridge.opencodeSessionId, timeoutSeconds * 1000);
+        await server.server.notification({
+          method: "notifications/message",
+          params: {
+            level: "info",
+            logger: "opencode.session",
+            data: { type: "session.completed", bridgeSessionId, opencodeSessionId: bridge.opencodeSessionId, event }
+          }
+        });
+        const messages = await client.getMessages(bridge.opencodeSessionId, 30);
+        const latestAssistant = messages.find((message) => message.type === "assistant");
+        const latestTerminal = messages.find((message) => message.type === "idle");
+        return {
+          completed: true,
+          alreadyIdle: event.type === "already_idle",
+          event: json(event),
+          bridgeSession: json(bridge),
+          latestAssistant: json(latestAssistant ?? null),
+          latestTerminal: json(latestTerminal ?? null),
+          messages: json(messages)
+        };
       })
   );
 
@@ -272,7 +482,7 @@ export function createBridgeMcpServer(ctx: RegisterContext): McpServer {
         const bridge = await ctx.state.getSession(bridgeSessionId);
         const managed = await ctx.processManager.ensure(bridge.repoPath);
         const client = ctx.processManager.clientFor(managed);
-        return { file: json(await client.readFile(path)) };
+        return { file: await client.readFile(path) };
       })
   );
 
@@ -319,29 +529,89 @@ export function createBridgeMcpServer(ctx: RegisterContext): McpServer {
     "opencode_capabilities",
     {
       title: "List opencode capabilities",
-      description: "List agents, slash commands, and provider/model configuration available in opencode for a bridge session.",
-      inputSchema: { bridgeSessionId: z.string().min(1) },
+      description: "List agents, slash commands, providers and the model catalog for the active session in repoPath, including enabled state, tool support, variants, context/output limits and pricing. Remaining provider-account quotas are not exposed by OpenCode.",
+      inputSchema: { bridgeSessionId: z.string().min(1).optional(), repoPath: z.string().min(1).optional() },
       annotations: { readOnlyHint: true, openWorldHint: false }
     },
-    async ({ bridgeSessionId }) =>
+    async ({ bridgeSessionId, repoPath }) =>
       safeTool(async () => {
-        const bridge = await ctx.state.getSession(bridgeSessionId);
+        if (!bridgeSessionId && !repoPath) throw new Error("Provide repoPath to inspect its active session capabilities, or bridgeSessionId to target a specific session");
+        const validatedRepo = repoPath ? await validateRepoPath(repoPath, ctx.config.allowedRoots) : undefined;
+        const bridge = bridgeSessionId
+          ? await ctx.state.getSession(bridgeSessionId)
+          : await ctx.state.getActiveSession(validatedRepo!);
+        if (!bridge) throw new Error(`No active Bridge session for repository ${validatedRepo}. Attach or create a session first.`);
+        if (validatedRepo && bridge.repoPath !== validatedRepo) throw new Error("bridgeSessionId does not belong to repoPath");
         const managed = await ctx.processManager.ensure(bridge.repoPath);
         const client = ctx.processManager.clientFor(managed);
-        const [agents, commands, providers, providerAuth, configProviders] = await Promise.all([
+        const [agents, commands, providers, models] = await Promise.all([
           client.listAgents(),
           client.listCommands(),
           client.listProviders(),
-          client.getProviderAuthMethods(),
-          client.getConfigProviders()
+          client.listModels()
         ]);
         return {
           agents: json(agents),
           commands: json(commands),
           providers: json(providers),
-          providerAuth: json(providerAuth),
-          configProviders: json(configProviders)
+          models: json(models),
+          quotaNote: "OpenCode exposes model context/input/output limits and pricing, but not remaining provider-account quota. Actual 429/rate-limit errors and Retry-After headers are forwarded from provider responses."
         };
+      })
+  );
+
+  server.registerTool(
+    "opencode_select_model_agent",
+    {
+      title: "Select OpenCode model and agent",
+      description: "Validate and select a compatible enabled provider/model/agent combination for the active session in repoPath. Returns context and output limits, cost metadata and tool capabilities.",
+      inputSchema: {
+        bridgeSessionId: z.string().min(1).optional(),
+        repoPath: z.string().min(1).optional(),
+        providerID: z.string().min(1),
+        modelID: z.string().min(1),
+        variant: z.string().optional(),
+        agent: z.string().min(1)
+      },
+      annotations: { readOnlyHint: false, openWorldHint: false }
+    },
+    async ({ bridgeSessionId, repoPath, providerID, modelID, variant, agent }) =>
+      safeTool(async () => {
+        if (!bridgeSessionId && !repoPath) throw new Error("Provide repoPath to select a model for its active session, or bridgeSessionId to target a specific session");
+        const validatedRepo = repoPath ? await validateRepoPath(repoPath, ctx.config.allowedRoots) : undefined;
+        const bridge = bridgeSessionId
+          ? await ctx.state.getSession(bridgeSessionId)
+          : await ctx.state.getActiveSession(validatedRepo!);
+        if (!bridge) throw new Error(`No active Bridge session for repository ${validatedRepo}. Attach or create a session first.`);
+        if (validatedRepo && bridge.repoPath !== validatedRepo) throw new Error("bridgeSessionId does not belong to repoPath");
+        if (bridgeSessionId) await ctx.state.setActiveSession(bridge.repoPath, bridge.bridgeSessionId);
+        const managed = await ctx.processManager.ensure(bridge.repoPath);
+        const client = ctx.processManager.clientFor(managed);
+        const [models, providers, agents] = await Promise.all([
+          client.listModels(),
+          client.listProviders(),
+          client.listAgents()
+        ]);
+        const { model, provider, agent: selectedAgent } = validateModelAgentSelection({
+          models: models as Array<Record<string, unknown>>,
+          providers: providers as Array<Record<string, unknown>>,
+          agents: agents as Array<Record<string, unknown>>,
+          providerID,
+          modelID,
+          variant,
+          agentID: agent
+        });
+        await client.selectModelAgent(bridge.opencodeSessionId, { providerID, modelID, variant, agent });
+        return json({
+          ok: true,
+          bridgeSession: json(bridge),
+          selection: { provider: { id: provider.id, name: provider.name, activation: provider.activation }, model: {
+            id: model.id, modelID: model.modelID, name: model.name, status: model.status,
+            enabled: model.enabled, limit: model.limit, cost: model.cost,
+            capabilities: model.capabilities, variants: model.variants
+          }, agent: { id: selectedAgent.id, name: selectedAgent.name, mode: selectedAgent.mode } },
+          quotaNote: "OpenCode's model catalog exposes context/input/output limits and pricing, but not remaining provider-account quota. Actual 429/rate-limit responses must be treated as temporary provider limits."
+        }) as { [key: string]: JsonValue };
       })
   );
 

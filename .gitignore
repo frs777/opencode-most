@@ -13,3 +13,8 @@ coverage
 /agenci.md
 /plugin-source/original/
 /plugin-source/*.tar.gz
+
+# User materials not to be tracked or pushed
+install.md
+MODULY-INTEGRACYJNE-MCP.md
+todo.md

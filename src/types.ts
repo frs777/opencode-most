@@ -13,7 +13,8 @@ export type BridgeConfig = {
   opencodePortStart: number;
   opencodeUsername: string;
   opencodePassword?: string;
-  opencodeServiceConfigPath: string;
+  opencodePasswordFile?: string;
+  opencodeBaseUrlFile?: string;
   stateDir: string;
   tunnel: "none" | "cloudflare" | "tailscale";
  tailscaleBin: string;

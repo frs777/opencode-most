@@ -478,7 +478,7 @@ describe("dynamic OpenCode service URL", () => {
     const authHeaders: string[] = [];
     try {
       await writeFile(serviceFile, JSON.stringify({ url: "http://127.0.0.1:49374", password: "p1" }));
-      const client = new OpencodeClient({ baseUrl: "http://127.0.0.1:4096", serviceConfigPath: serviceFile, fetchImpl: async (url, init = {}) => { urls.push(String(url)); authHeaders.push((init.headers as Record<string, string>).Authorization); return new Response(JSON.stringify({ data: [] }), { status: 200 }); } });
+      const client = new OpencodeClient({ baseUrl: "http://127.0.0.1:4096", passwordFilePath: serviceFile, baseUrlFilePath: serviceFile, fetchImpl: async (url, init = {}) => { urls.push(String(url)); authHeaders.push((init.headers as Record<string, string>).Authorization); return new Response(JSON.stringify({ data: [] }), { status: 200 }); } });
       await client.listSessions();
       await writeFile(serviceFile, JSON.stringify({ url: "http://127.0.0.1:51000", password: "p2" }));
       await client.listSessions();

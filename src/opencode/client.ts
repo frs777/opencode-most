@@ -1,7 +1,7 @@
 import type { OpencodeDiff, OpencodeMessage, OpencodeSession, OpencodeStatus } from "../types.js";
 import { readFileSync } from "node:fs";
 
-export type OpencodeClientOptions = { baseUrl: string; username?: string; password?: string; serviceConfigPath?: string; directory?: string; fetchImpl?: typeof fetch };
+export type OpencodeClientOptions = { baseUrl: string; username?: string; password?: string; passwordFilePath?: string; baseUrlFilePath?: string; directory?: string; fetchImpl?: typeof fetch };
 export type SendMessageInput = { sessionId: string; text: string; providerID?: string; modelID?: string; variant?: string; agent?: string; system?: string; noReply?: boolean; tools?: Record<string, boolean>; async?: boolean };
 type Envelope<T> = T | { data: T };
 
@@ -9,16 +9,17 @@ export class OpencodeClient {
   private readonly baseUrl: string;
   private readonly username?: string;
   private readonly password?: string;
-  private readonly serviceConfigPath?: string;
+  private readonly passwordFilePath?: string;
+  private readonly baseUrlFilePath?: string;
   private readonly directory?: string;
   private readonly fetchImpl: typeof fetch;
   constructor(options: OpencodeClientOptions) {
-    this.baseUrl = options.baseUrl.replace(/\/$/, ""); this.username = options.username; this.password = options.password; this.serviceConfigPath = options.serviceConfigPath; this.directory = options.directory; this.fetchImpl = options.fetchImpl ?? fetch;
+    this.baseUrl = options.baseUrl.replace(/\/$/, ""); this.username = options.username; this.password = options.password; this.passwordFilePath = options.passwordFilePath; this.baseUrlFilePath = options.baseUrlFilePath; this.directory = options.directory; this.fetchImpl = options.fetchImpl ?? fetch;
   }
   private currentBaseUrl(): string {
-    if (!this.serviceConfigPath) return this.baseUrl;
+    if (!this.baseUrlFilePath) return this.baseUrl;
     let raw: string;
-    try { raw = readFileSync(this.serviceConfigPath, "utf8"); }
+    try { raw = readFileSync(this.baseUrlFilePath, "utf8"); }
     catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return this.baseUrl;
       throw new Error("Unable to read OpenCode service URL");
@@ -34,17 +35,17 @@ export class OpencodeClient {
   }
   get url(): string { return this.currentBaseUrl(); }
   private currentPassword(): string | undefined {
-    if (!this.serviceConfigPath) return this.password;
+    if (!this.passwordFilePath) return this.password;
     let raw: string;
-    try { raw = readFileSync(this.serviceConfigPath, "utf8"); }
+    try { raw = readFileSync(this.passwordFilePath, "utf8"); }
     catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return this.password;
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
       throw new Error("Unable to read OpenCode service credentials");
     }
     try {
       const config = JSON.parse(raw) as { password?: unknown };
-      if (typeof config.password !== "string" || !config.password.trim()) throw new Error();
-      return config.password;
+      if (config.password !== undefined && typeof config.password !== "string") throw new Error();
+      return typeof config.password === "string" && config.password.length > 0 ? config.password : undefined;
     } catch { throw new Error("Invalid OpenCode service credentials configuration"); }
   }
   private headers(extra?: HeadersInit): HeadersInit {

@@ -86,7 +86,10 @@ export class OpencodeProcessManager {
       baseUrl: managed.baseUrl,
       username: managed.username,
       password: managed.password,
-      serviceConfigPath: this.config.opencodeServiceConfigPath,
+      ...(managed.process ? {} : {
+        passwordFilePath: this.config.opencodePasswordFile,
+        baseUrlFilePath: this.config.opencodeBaseUrlFile
+      }),
       directory: managed.repoPath
     });
   }

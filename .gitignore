@@ -18,3 +18,14 @@ coverage
 install.md
 MODULY-INTEGRACYJNE-MCP.md
 todo.md
+
+# Whole directories excluded from tracking/push (kept locally for review)
+docs/
+!docs/ARCHITECTURE.md
+!docs/ARCHITECTURE_pl.md
+tests/
+plugin-source/
+
+# INSTALL.md (wielkie litery) jest śledzone; install.md (małe litery) pozostaje ignorowane.
+# Na systemach case-sensitive (Linux) install.md nie pasuje do INSTALL.md.
+install.md

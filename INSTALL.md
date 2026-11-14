@@ -1,69 +1,69 @@
-# Instalacja i uruchomienie
+# Installation and Setup
 
-Lokalny most MCP łączy ChatGPT z serwerem OpenCode działającym na komputerze użytkownika. Transport MCP to Streamable HTTP pod endpointem `/mcp`.
+Local MCP bridge connecting ChatGPT to an OpenCode server running on your computer. MCP transport is Streamable HTTP under the `/mcp` endpoint.
 
-## Wymagania
+## Requirements
 
-- Node.js 20 lub nowszy
-- pnpm 11.18.0 (wersja przypięta w `package.json`; zalecany Corepack)
-- OpenCode zainstalowany i skonfigurowany
-- HTTPS endpoint/tunel tylko wtedy, gdy most ma być osiągalny zdalnie
+- Node.js 20 or newer
+- pnpm 11.18.0 (pinned in `package.json`; Corepack recommended)
+- OpenCode installed and configured locally
+- HTTPS endpoint/tunnel only when the bridge must be reachable remotely
 
-## Instalacja
+## Installation
 
 ```bash
-git clone https://github.com/yuga-hashimoto/opencode-chatgpt-bridge.git
-cd opencode-chatgpt-bridge
+git clone <your-opencode-most-repository-url>
+cd opencode-most
 pnpm install
 pnpm run build
 ```
 
-## Konfiguracja
+## Configuration
 
-Utwórz lokalny plik `.env` w katalogu repozytorium:
+Create a local `.env` file in the repository directory:
 
 ```bash
 pnpm run init -- --allowed-roots /path/to/your/projects
 ```
 
-Polecenie generuje losowy `OPENCODE_BRIDGE_TOKEN`, zapisuje wskazane katalogi dozwolone i włącza automatyczny wybór kolejnego portu, jeśli domyślny jest zajęty. Nie nadpisuje istniejącego `.env` bez opcji `--force`.
+The command generates a random `OPENCODE_BRIDGE_TOKEN`, saves the allowed directory roots, and enables automatic fallback to the next free port if the default is occupied. It does not overwrite an existing `.env` without the `--force` flag.
 
-Domyślne ustawienia:
+Default settings:
 - host: `127.0.0.1`
 - port: `8787`
-- automatyczny fallback portu: włączony
-- tunel: wyłączony (`OPENCODE_BRIDGE_TUNNEL=none`)
-- katalog stanu: `~/.opencode-chatgpt-bridge`
+- automatic port fallback: enabled
+- tunnel: disabled (`OPENCODE_BRIDGE_TUNNEL=none`)
+- state directory: `~/.opencode-chatgpt-bridge`
 
-Tunel włącz jawnie w `.env`, ustawiając `OPENCODE_BRIDGE_TUNNEL=cloudflare` albo `OPENCODE_BRIDGE_TUNNEL=tailscale`. Wymagany token jest tworzony przez `init`. Zainstaluj i skonfiguruj odpowiedni program tunelujący przed uruchomieniem.
+Enable the tunnel explicitly in `.env` by setting `OPENCODE_BRIDGE_TUNNEL=cloudflare` or `OPENCODE_BRIDGE_TUNNEL=tailscale`. The required token is created by `init`. Install and configure the appropriate tunneling program before starting.
 
-## Uruchomienie
+## Running
 
 ```bash
 pnpm start
 ```
 
-Po starcie sprawdź:
-- `http://127.0.0.1:8787/health` — status HTTP (użyj portu wypisanego przez proces, jeśli nastąpił fallback)
-- `http://127.0.0.1:8787/mcp` — endpoint MCP
+After startup, verify:
+- `http://127.0.0.1:8787/health` — HTTP status (use the port printed by the process if fallback occurred)
+- `http://127.0.0.1:8787/mcp` — MCP endpoint
 
-Most drukuje instrukcję połączenia, w tym adres publiczny, jeżeli tunel jest włączony. Do ChatGPT użyj adresu MCP i uwierzytelniania Bearer. Gdy klient nie obsługuje nagłówka Authorization, użyj wygenerowanego wariantu URL z tokenem.
+The bridge prints connection instructions, including the public address if a tunnel is enabled. For ChatGPT, use the MCP address and Bearer authentication. If the client does not support the `Authorization` header, use the generated URL variant with the token.
 
-## Połączenie z ChatGPT
+## ChatGPT connection
 
-W ustawieniach ChatGPT włącz Developer mode, utwórz połączenie MCP i wklej adres wydrukowany przez most. Dostępność i nazwy ekranów zależą od aktualnego interfejsu ChatGPT.
+In ChatGPT settings, enable Developer mode, create an MCP connection, and paste the address printed by the bridge. Availability and screen names depend on the current ChatGPT interface.
 
-Po połączeniu sprawdź narzędzia przez `bridge_health` i `list_projects`. Przed wysłaniem zadania do repozytorium:
-1. sprawdź aktywną sesję;
-2. dołącz istniejącą sesję, jeśli ma być kontynuowana;
-3. twórz nową sesję tylko wtedy, gdy jest to zamierzone;
-4. po pracy sprawdź diff przez `opencode_get_diff`.
+After connecting, check tools via `bridge_health` and `list_projects`. Before sending a task to a repository:
+1. check the active session;
+2. attach an existing session if it should be continued;
+3. create a new session only if intended;
+4. after work, check the diff via `opencode_get_diff`.
 
-Pełny opis funkcji, narzędzi i modelu bezpieczeństwa znajduje się w [README](README.md).
+Full description of features, tools, and security model is in [`README.md`](README.md).
 
-## Tryb usługi w tle (macOS)
+## Background service mode (macOS LaunchAgent)
 
-Projekt zawiera integrację LaunchAgent dla macOS:
+The project contains LaunchAgent integration for macOS:
 
 ```bash
 pnpm run build
@@ -71,15 +71,38 @@ pnpm run install-service
 pnpm run service-status
 ```
 
-Odinstalowanie usługi:
+Service uninstallation:
 
 ```bash
 pnpm run uninstall-service
 ```
 
-Instalator LaunchAgent konfiguruje również Tailscale Funnel na publicznym porcie HTTPS 10000. Wymaga zainstalowanego, zalogowanego Tailscale z włączoną możliwością użycia Funnel. To polecenie nie jest instalatorem usługi dla Linux ani Windows. Na tych platformach uruchamiaj most jako proces użytkownika lub skonfiguruj własny nadzorowany proces.
+The LaunchAgent installer also configures Tailscale Funnel on public HTTPS port 10000. It requires Tailscale installed, logged in, and Funnel enabled. This command is not a service installer for Linux or Windows. On those platforms, run the bridge as a user process or configure your own supervised process.
 
-## Diagnostyka i testy
+## Linux background service (systemd --user)
+
+On Linux, OpenCode Most can start automatically after you log in to your graphical session. The user service starts the local MCP bridge, waits for its health endpoint, then starts the existing Secure MCP Tunnel client. systemd restarts either process after a failure and stops both services when the graphical session ends.
+
+From the repository root:
+
+```bash
+pnpm install
+pnpm run build
+pnpm run install-user-service
+systemctl --user status opencode-most.target opencode-most.service opencode-most-tunnel.service
+```
+
+The installer uses the existing `.env`, tunnel-client binary, and tunnel key. By default it looks in `$HOME/Projekty/OmniCommanderMCP/tunnel-client-v0.0.16-linux-amd64/`; set `TUNNEL_DIR`, `TUNNEL_BIN`, or `TUNNEL_KEY` to override those paths. The key is supplied to systemd through `LoadCredential=`; it is not copied into this repository or embedded in a unit file. The installer refuses to overwrite units it does not own, but can safely refresh units previously installed by OpenCode Most.
+
+To remove only the OpenCode Most user units:
+
+```bash
+pnpm run uninstall-user-service
+```
+
+The former manual `most` launcher has been retired. Use the systemd target to manage the Linux bridge and tunnel.
+
+## Diagnostics and tests
 
 ```bash
 pnpm run doctor
@@ -89,11 +112,11 @@ pnpm run build
 pnpm run validate
 ```
 
-## Bezpieczeństwo
+## Security
 
-- Nie wystawiaj mostu na publiczny interfejs bez tokena.
-- Pozostaw host `127.0.0.1`, chyba że świadomie konfigurujesz inną granicę sieciową.
-- Ogranicz `OPENCODE_BRIDGE_ALLOWED_ROOTS` do repozytoriów, do których ChatGPT ma mieć dostęp.
-- Nie publikuj `.env`, tokenów ani danych uwierzytelniających.
-- Serwer OpenCode jest uruchamiany lokalnie na loopback; zdalnie wystawiany jest wyłącznie most.
-- Most umożliwia lokalne operacje na kodzie przez OpenCode. Sprawdzaj diff przed zatwierdzeniem lub wysłaniem zmian.
+- Do not expose the bridge on a public interface without a token.
+- Keep host `127.0.0.1` unless you consciously configure another network boundary.
+- Limit `OPENCODE_BRIDGE_ALLOWED_ROOTS` to repositories ChatGPT may access.
+- Do not publish `.env`, tokens, or credentials.
+- The OpenCode server runs locally on loopback; only the bridge is exposed remotely.
+- The bridge enables local code operations through OpenCode. Review diffs before committing or pushing changes.

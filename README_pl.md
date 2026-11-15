@@ -2,6 +2,8 @@
 
 **Aktualna wersja beta:** `1.0.0-beta.1`
 
+Wersja angielska: [`README.md`](README.md).
+
 OpenCode Most to silnie zmodyfikowany widelec (fork) projektu [yuga-hashimoto/opencode-chatgpt-bridge](https://github.com/yuga-hashimoto/opencode-chatgpt-bridge). Łączy ChatGPT z lokalnym środowiskiem OpenCode przez endpoint MCP i bezpieczny tunel, oraz wspomaga koordynację wielu agentów OpenCode równolegle bez przełączania się między ChatGPT a OpenCode.
 Program nie jest związany w żaden sposób z projektem OpenCode ani ChatGPT.
 
@@ -248,7 +250,7 @@ MIT
 
 ### Dokumentacja architektury
 
-Pełna dokumentacja architektury, w tym granice modułów, punkty wejścia, cykl życia sesji, przepływ żądań, bezpieczeństwo i uwierzytelnianie, znajduje się w [`docs/ARCHITECTURE_pl.md`](docs/ARCHITECTURE_pl.md) (wersja polska) oraz [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (wersja angielska). Pliki te są wyjątkiem od ignorowania katalogu `docs/` i są dostępne w publicznym repozytorium.
+Pełna dokumentacja architektury, w tym granice modułów, punkty wejścia, cykl życia sesji, przepływ żądań, bezpieczeństwo i uwierzytelnianie, znajduje się w [`docs/ARCHITECTURE_pl.md`](docs/ARCHITECTURE_pl.md). Plik ten jest wyjątkiem od ignorowania katalogu `docs/` i jest dostępny w publicznym repozytorium.
 
 ## Author
 

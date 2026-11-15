@@ -10,8 +10,10 @@ This repository is not an unmodified upstream release. It adds multi-agent workf
 
 This is a standalone project focused on the ChatGPT <-> OpenCode bridge use case.
 
+Polish version: [README_pl.md](README_pl.md).
+
 ```text
-ChatGPT / ChatGPT Mobile
+  -> ChatGPT
   -> secure HTTPS tunnel
   -> opencode-most /mcp
   -> local opencode serve
@@ -20,13 +22,9 @@ ChatGPT / ChatGPT Mobile
 
 <img src="assets/icons/logo.png" width="25%">
 
-## Author
+## Quick start
 
-**frs** — mail: [59541810+frs777@users.noreply.github.com](mailto:59541810+frs777@users.noreply.github.com)
-
-## Installation
-
-Full installation, configuration, and service setup instructions are in [`INSTALL.md`](INSTALL.md).
+Full installation instructions are in [INSTALL.md](INSTALL.md).
 
 After publishing your fork, replace the clone URL below with the URL of your `opencode-most` repository.
 
@@ -55,9 +53,9 @@ When the bridge starts, it prints setup instructions with:
 
 ## Requirements
 
-- Node.js version 20 or newer
+- Node.js version 20+
 - pnpm version 11.18.0 (pinned in `package.json`; Corepack recommended)
-- OpenCode installed and authenticated locally
+- `opencode` installed and authenticated locally
 - `cloudflared` when using the Cloudflare tunnel, or Tailscale when using Tailscale Funnel (both optional if you provide your own HTTPS endpoint)
 
 Check opencode:
@@ -147,7 +145,6 @@ Manual path:
 Settings -> Apps & Connectors -> Advanced settings -> enable Developer mode
 Plugins -> Add -> Add custom MCP server
 ```
-
 Use the values printed by the bridge. They look like this:
 
 ```text
@@ -164,7 +161,7 @@ Authorization: Bearer <OPENCODE_BRIDGE_TOKEN>
 
 If not, use the generated `?token=` URL variant.
 
-Once linked on ChatGPT Web, the connector should be available in ChatGPT mobile apps as well.
+Once linked on ChatGPT Web, the connector should be available in ChatGPT mobile apps.
 
 ## opencode configuration
 
@@ -251,10 +248,12 @@ pnpm run validate
 
 MIT
 
-## Documentation
+### Architecture documentation
 
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the architecture overview, component boundaries, request/response flow, session lifecycle, security model, and build/test process.
+Full architecture documentation, including module boundaries, entry points, session lifecycle, request/response flow, security, and authentication, is found in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). This file is an exception to `docs/` ignoring and is available in the public repository.
 
-## Beta notice
+## Author
 
-This is a beta release (`1.0.0-beta.1`). Not all features may work correctly, and behavior may change between releases.
+<img src="assets/images/frs.png" width="10%">
+
+**frs** — mail: [59541810+frs777@users.noreply.github.com](mailto:59541810+frs777@users.noreply.github.com)

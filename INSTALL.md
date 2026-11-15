@@ -8,6 +8,7 @@ Local MCP bridge connecting ChatGPT to an OpenCode server running on your comput
 - pnpm 11.18.0 (pinned in `package.json`; Corepack recommended)
 - OpenCode installed and configured locally
 - HTTPS endpoint/tunnel only when the bridge must be reachable remotely
+- `cloudflared` when using the Cloudflare tunnel, or Tailscale when using Tailscale Funnel (both optional if you provide your own HTTPS endpoint)
 
 ## Installation
 
@@ -102,6 +103,19 @@ pnpm run uninstall-user-service
 
 The former manual `most` launcher has been retired. Use the systemd target to manage the Linux bridge and tunnel.
 
+## Windows
+
+Windows is **not supported natively** as a service platform. There are no Windows service scripts in this repository (only `systemd --user` for Linux and LaunchAgent for macOS).
+
+To run OpenCode Most on Windows, use **WSL (Windows Subsystem for Linux)**:
+
+1. Install WSL and a Linux distribution (e.g., Ubuntu) from the Microsoft Store.
+2. Inside WSL, follow the Linux installation instructions above (Node.js, pnpm, OpenCode, `pnpm install`, `pnpm run build`).
+3. The bridge can be run as a regular process with `pnpm start`.
+4. systemd user services and LaunchAgent are not available in WSL by default; manage the bridge process manually or configure your own process supervisor.
+
+The OpenCode server must be installed and authenticated inside the same WSL environment where the bridge runs.
+
 ## Diagnostics and tests
 
 ```bash
@@ -120,3 +134,13 @@ pnpm run validate
 - Do not publish `.env`, tokens, or credentials.
 - The OpenCode server runs locally on loopback; only the bridge is exposed remotely.
 - The bridge enables local code operations through OpenCode. Review diffs before committing or pushing changes.
+
+## Credentials (OpenCode service.json)
+
+The bridge reads OpenCode credentials from `~/.local/state/opencode/service.json` (fields `url` and `password`). This file is managed by OpenCode itself, not by the bridge.
+
+- If `service.json` exists, its `url` and `password` fields are the source of truth and are reread for every OpenCode API request. Port changes and password rotation therefore take effect without restarting the bridge.
+- The legacy `~/.config/opencode/service.json` path is not used.
+- If `OPENCODE_SERVER_PASSWORD` is not set and `service.json` has no password, the bridge generates a random password per managed opencode server.
+- If `OPENCODE_SERVER_AUTH_DISABLED=1`, credentials are not loaded from `service.json`.
+- Credentials are never written to logs in plain form; the bridge masks tokens in HTTP responses (e.g., `/health` shows only the first and last 4 characters).

@@ -1,7 +1,0 @@
-{
-  "apps": {
-    "opencode-bridge": {
-      "id": "REPLACE_WITH_PRIVATE_CHATGPT_APP_ID"
-    }
-  }
-}

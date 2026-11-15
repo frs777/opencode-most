@@ -16,112 +16,15 @@ ChatGPT / ChatGPT Mobile
 
 This standalone project is focused on the ChatGPT <-> OpenCode bridge use case.
 
-## Quick start
+## Author
 
-After publishing your fork, replace the clone URL below with the URL of your `opencode-most` repository.
+**frs** — `59541810+frs777@users.noreply.github.com`
 
-```bash
-git clone <your-opencode-most-repository-url>
-cd opencode-most
-pnpm install
-pnpm run build
-pnpm run init -- --allowed-roots /path/to/repos
-pnpm start
-```
+![OpenCode Most logo](assets/images/opencode-most-logo.jpeg)
 
-`init` writes a project-local `.env` with a random bridge token, your allowed repo roots, and automatic port fallback. Tunneling is disabled by default (`OPENCODE_BRIDGE_TUNNEL=none`); configure Cloudflare or Tailscale explicitly when needed.
+## Installation
 
-When the bridge starts, it prints a setup guide with:
-
-- local health URL
-- local MCP URL
-- automatic fallback port when the preferred port is already in use
-- public HTTPS MCP URL when a tunnel is enabled; foreground Tailscale Funnel uses port 8443, while the macOS LaunchAgent configures port 10000
-- ChatGPT settings link
-- connector name, description, and URL to paste
-- header auth and URL-token fallback
-- opencode CLI status and setup notes
-- first ChatGPT prompt to try
-
-## Requirements
-
-- Node.js 20+
-- pnpm 11.18.0 (pinned in `package.json`; Corepack recommended)
-- `opencode` installed and authenticated locally
-- `cloudflared` when using the Cloudflare tunnel, or Tailscale when using Tailscale Funnel (both optional if you provide your own HTTPS endpoint)
-
-Check opencode:
-
-```bash
-opencode --version
-opencode
-```
-
-Run `opencode` once inside a repo and make sure your model provider is configured before expecting ChatGPT to drive it. OpenCode Most starts `opencode serve` for each repo and talks to it over HTTP. You can ask ChatGPT to inspect the providers, models, agents, and authentication methods available in your local OpenCode environment.
-
-## Commands
-
-```bash
-opencode-most init --allowed-roots /path/to/repos
-opencode-most start
-opencode-most doctor
-```
-
-From source, use pnpm:
-
-```bash
-pnpm run init -- --allowed-roots /path/to/repos
-pnpm start
-pnpm run doctor
-```
-
-## Background mode on macOS
-
-You do not need to keep a terminal open. Install the bridge as a user LaunchAgent:
-
-```bash
-pnpm run build
-pnpm run install-service
-pnpm run service-status
-```
-
-Logs are written to:
-
-```text
-~/.opencode-chatgpt-bridge/bridge.log
-~/.opencode-chatgpt-bridge/bridge.err.log
-```
-
-To stop background mode:
-
-```bash
-pnpm run uninstall-service
-```
-
-The macOS installer also configures Tailscale Funnel on public port 10000 and requires Tailscale to be installed, logged in, and allowed to use Funnel. The service uses this repository directory as its working directory, loads `.env`, starts the bridge, and keeps it alive after login.
-
-## Linux background service (systemd user)
-
-On Linux, OpenCode Most can start automatically after you log in to your graphical session. The user service starts the local MCP bridge, waits for its health endpoint, then starts the existing Secure MCP Tunnel client. systemd restarts either process after a failure and stops both services when the graphical session ends.
-
-From the repository root:
-
-```bash
-pnpm install
-pnpm run build
-pnpm run install-user-service
-systemctl --user status opencode-most.target opencode-most.service opencode-most-tunnel.service
-```
-
-The installer uses the existing `.env`, tunnel-client binary, and tunnel key. By default it looks in `$HOME/Projekty/OmniCommanderMCP/tunnel-client-v0.0.16-linux-amd64/`; set `TUNNEL_DIR`, `TUNNEL_BIN`, or `TUNNEL_KEY` to override those paths. The key is supplied to systemd through `LoadCredential=`; it is not copied into this repository or embedded in a unit file. The installer refuses to overwrite units it does not own, but can safely refresh units previously installed by OpenCode Most.
-
-To remove only the OpenCode Most user units:
-
-```bash
-pnpm run uninstall-user-service
-```
-
-The former manual `most` launcher has been retired. Use the systemd target to manage the Linux bridge and tunnel.
+Full installation, configuration, and service setup instructions are in [`INSTALL.md`](INSTALL.md).
 
 ## ChatGPT setup
 
@@ -241,11 +144,10 @@ pnpm run validate
 
 MIT
 
+## Documentation
 
-### Documentation
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the architecture overview, component boundaries, request/response flow, session lifecycle, security model, and build/test process.
 
-See [`docs/README.md`](docs/README.md) for the documentation index, including session lifecycle, model policy, roadmap and research notes.
+## Beta notice
 
-### Session lifecycle and deletion
-
-See [`docs/session-lifecycle.md`](docs/session-lifecycle.md) for the persistent-session workflow, completion notifications, model/agent selection, and the guarded deletion procedure. The implementation history and current verification record are in [`docs/CHANGELOG.md`](docs/CHANGELOG.md).
+This is a beta release (`1.0.0-beta.1`). Not all features may work correctly, and behavior may change between releases.

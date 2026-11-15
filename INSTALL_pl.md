@@ -12,7 +12,7 @@ Lokalny most MCP łączący ChatGPT z serwerem OpenCode działającym na kompute
 ## Instalacja
 
 ```bash
-git clone <twój-repozytorium-opencode-most>
+git clone https://github.com/frs777/opencode-most.git
 cd opencode-most
 pnpm install
 pnpm run build
@@ -102,6 +102,19 @@ pnpm run uninstall-user-service
 
 Były ręczny launcher `most` został wycofany. Używaj celu systemd do zarządzania mostem Linux i tunelami.
 
+## Windows
+
+Windows nie jest natywnie obsługiwany jako platforma usługi. Nie ma skryptów usług systemu Windows w tym repozytorium (tylko `systemd --user` dla Linux i LaunchAgent dla macOS).
+
+Aby uruchomić OpenCode Most w systemie Windows, użyj **WSL (Windows Subsystem for Linux)**:
+
+1. Zainstaluj WSL i dystrybucję Linux (np. Ubuntu) ze sklepu Microsoft Store.
+2. Wewnątrz WSL postępuj zgodnie z instrukcjami instalacji dla Linuxa (Node.js, pnpm, OpenCode, `pnpm install`, `pnpm run build`).
+3. Most można uruchomić jako zwykły proces poleceniem `pnpm start`.
+4. Usługi użytkownika systemd i LaunchAgent nie są dostępne w WSL domyślnie; zarządzaj procesem mostu ręcznie lub skonfiguruj własnego nadzorcę procesu.
+
+Serwer OpenCode musi być zainstalowany i uwierzytelniony w tym samym środowisku WSL, w którym działa most.
+
 ## Diagnostyka i testy
 
 ```bash
@@ -120,3 +133,13 @@ pnpm run validate
 - Nie publikuj `.env`, tokenów ani danych uwierzytelniających.
 - Serwer OpenCode jest uruchamiany lokalnie na loopback; zdalnie wystawiany jest wyłącznie most.
 - Most umożliwia lokalne operacje na kodzie przez OpenCode. Sprawdzaj diff przed zatwierdzeniem lub wysłaniem zmian.
+
+## Poświadczenia (OpenCode service.json)
+
+Most odczytuje poświadczenia OpenCode z `~/.local/state/opencode/service.json` (pola `url` i `password`). Ten plik jest zarządzany przez samego OpenCode, a nie przez most.
+
+- Jeśli plik `service.json` istnieje, jego pola `url` i `password` są źródłem prawdy i są czytane ponownie przy każdym żądaniu API OpenCode. Zmiany portów i rotacja hasła więc wchodzą w życie bez restartu mostu.
+- Starsza ścieżka `~/.config/opencode/service.json` nie jest używana.
+- Jeśli `OPENCODE_SERVER_PASSWORD` nie jest ustawione i plik `service.json` nie ma hasła, most generuje losowe hasło na każdy zarządzany serwer opencode.
+- Jeśli `OPENCODE_SERVER_AUTH_DISABLED=1`, poświadczenia nie są wczytywane z `service.json`.
+- Poświadczenia nigdy nie są zapisywane do logów w formie jawnej; most maskuje tokeny w odpowiedziach HTTP (np. `/health` pokazuje tylko pierwsze i ostatnie 4 znaki).

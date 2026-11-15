@@ -4,29 +4,136 @@
 
 OpenCode Most is a heavily modified fork of [yuga-hashimoto/opencode-chatgpt-bridge](https://github.com/yuga-hashimoto/opencode-chatgpt-bridge). It connects ChatGPT to your local OpenCode environment through an MCP endpoint and a secure tunnel, and supports coordinating multiple OpenCode agents in parallel without switching between ChatGPT and OpenCode.
 
-This repository is not an unmodified upstream release. It adds multi-agent workflows, persistent session handling, richer model/agent selection, diagnostics, and a managed tunnel workflow.
+This program is not associated in any way with the OpenCode or ChatGPT projects.
+
+This repository is not an unmodified upstream release. It adds multi-agent workflows, persistent session handling, and a managed tunnel workflow.
+
+This is a standalone project focused on the ChatGPT <-> OpenCode bridge use case.
 
 ```text
 ChatGPT / ChatGPT Mobile
-  -> HTTPS tunnel
+  -> secure HTTPS tunnel
   -> opencode-most /mcp
   -> local opencode serve
   -> local repository
 ```
 
-This standalone project is focused on the ChatGPT <-> OpenCode bridge use case.
+<img src="assets/icons/logo.png" width="25%">
 
 ## Author
 
-**frs** — `59541810+frs777@users.noreply.github.com`
-
-![OpenCode Most logo](assets/images/opencode-most-logo.jpeg)
+**frs** — mail: [59541810+frs777@users.noreply.github.com](mailto:59541810+frs777@users.noreply.github.com)
 
 ## Installation
 
 Full installation, configuration, and service setup instructions are in [`INSTALL.md`](INSTALL.md).
 
-## ChatGPT setup
+After publishing your fork, replace the clone URL below with the URL of your `opencode-most` repository.
+
+```bash
+git clone https://github.com/frs777/opencode-most
+cd opencode-most
+pnpm install
+pnpm run build
+pnpm run init -- --allowed-roots /path/to/repositories
+pnpm start
+```
+
+`init` creates a local `.env` file with a random bridge token, your allowed repository roots, and automatic port selection. Tunneling is disabled by default (`OPENCODE_BRIDGE_TUNNEL=none`); configure Cloudflare or Tailscale explicitly when needed.
+
+When the bridge starts, it prints setup instructions with:
+
+- local health URL
+- local MCP URL
+- automatic port selection when the preferred port is already occupied
+- public MCP URL when tunneling is enabled; Tailscale Funnel in foreground mode uses port 8443, while the macOS LaunchAgent configuration uses port 10000
+- link to ChatGPT settings
+- name, description, and URL to paste into the connector
+- header authentication and URL-token fallback
+- opencode CLI status and setup notes
+- first test message to ChatGPT
+
+## Requirements
+
+- Node.js version 20 or newer
+- pnpm version 11.18.0 (pinned in `package.json`; Corepack recommended)
+- OpenCode installed and authenticated locally
+- `cloudflared` when using the Cloudflare tunnel, or Tailscale when using Tailscale Funnel (both optional if you provide your own HTTPS endpoint)
+
+Check opencode:
+
+```bash
+opencode --version
+opencode
+```
+
+Run `opencode` once inside a repository and make sure your model provider is configured before expecting ChatGPT to control it. OpenCode Most starts `opencode serve` for each repository and communicates with it over HTTP. You can ask ChatGPT to inspect providers, models, agents, and authentication methods available in your local OpenCode environment.
+
+## Commands
+
+```bash
+opencode-most init --allowed-roots /path/to/repositories
+opencode-most start
+opencode-most doctor
+```
+
+From source, using pnpm:
+
+```bash
+pnpm run init -- --allowed-roots /path/to/repositories
+pnpm start
+pnpm run doctor
+```
+
+## Background mode on macOS
+
+You do not need to keep a terminal open. Install the bridge as a LaunchAgent user:
+
+```bash
+pnpm run build
+pnpm run install-service
+pnpm run service-status
+```
+
+Logs are written to:
+
+```text
+~/.opencode-chatgpt-bridge/bridge.log
+~/.opencode-chatgpt-bridge/bridge.err.log
+```
+
+To stop background mode:
+
+```bash
+pnpm run uninstall-service
+```
+
+The macOS installer also configures Tailscale Funnel on public port 10000 and requires Tailscale installed, logged in, and Funnel allowed. The service uses this repository directory as its working directory, loads `.env`, starts the bridge, and keeps it alive after login.
+
+## Background service on Linux (systemd user)
+
+On Linux, OpenCode Most can start automatically after you log in to your graphical session. The user service starts the local MCP bridge, waits for its health endpoint, then starts the existing Secure MCP Tunnel client. systemd restarts either process after a failure and stops both processes when the graphical session ends.
+
+From the repository root:
+
+```bash
+pnpm install
+pnpm run build
+pnpm run install-user-service
+systemctl --user status opencode-most.target opencode-most.service opencode-most-tunnel.service
+```
+
+The installer uses the existing `.env`, tunnel-client binary, and tunnel key. By default it looks in `$HOME/Projekty/OmniCommanderMCP/tunnel-client-v0.0.16-linux-amd64/`; set `TUNNEL_DIR`, `TUNNEL_BIN`, or `TUNNEL_KEY` to override those paths. The key is supplied to systemd through `LoadCredential=`; it is not copied into this repository or embedded in a unit file. The installer refuses to overwrite units it does not own, but can safely refresh units previously installed by OpenCode Most.
+
+To remove only the OpenCode Most user units:
+
+```bash
+pnpm run uninstall-user-service
+```
+
+The former manual `most` launcher has been retired. Use the systemd target to manage the Linux bridge and tunnel.
+
+## ChatGPT configuration
 
 Open ChatGPT Web and go to:
 
@@ -38,13 +145,13 @@ Manual path:
 
 ```text
 Settings -> Apps & Connectors -> Advanced settings -> enable Developer mode
-Settings -> Connectors -> Create
+Plugins -> Add -> Add custom MCP server
 ```
 
 Use the values printed by the bridge. They look like this:
 
 ```text
-Connector name: opencode local bridge
+Connector name: local opencode bridge
 Description: Control local opencode sessions, inspect diffs, and manage local coding tasks.
 Connector URL: https://example.trycloudflare.com/mcp?token=<generated-token>
 ```
@@ -55,13 +162,13 @@ If your ChatGPT connector UI supports auth headers, you can use the plain `/mcp`
 Authorization: Bearer <OPENCODE_BRIDGE_TOKEN>
 ```
 
-If not, use the printed `?token=` URL fallback.
+If not, use the generated `?token=` URL variant.
 
 Once linked on ChatGPT Web, the connector should be available in ChatGPT mobile apps as well.
 
-## opencode setup
+## opencode configuration
 
-No extra opencode project configuration is required by the bridge, but opencode itself must be usable locally.
+The bridge does not require additional opencode project configuration, but opencode itself must be usable locally.
 
 The bridge starts opencode like this:
 
@@ -126,7 +233,7 @@ Default protections:
 Strongly recommended:
 
 - Always set `OPENCODE_BRIDGE_TOKEN` before exposing through any tunnel.
-- Do not bind the bridge to `0.0.0.0` unless you know exactly what network can reach it.
+- Do not bind the bridge to `0.0.0.0` unless you know exactly which network can reach it.
 - Keep `OPENCODE_BRIDGE_ALLOWED_ROOTS` narrow.
 - Review `opencode_get_diff` before committing or pushing generated changes.
 

@@ -2,26 +2,31 @@
 
 **Aktualna wersja beta:** `1.0.0-beta.1`
 
-OpenCode Most to silnie zmodyfikowany widelce (fork) projektu [yuga-hashimoto/opencode-chatgpt-bridge](https://github.com/yuga-hashimoto/opencode-chatgpt-bridge). Łączy ChatGPT z lokalnym środowiskiem OpenCode przez endpoint MCP i bezpieczny tunel, oraz wspomaga koordynację wielu agentów OpenCode równolegle bez przełączania się między ChatGPT a OpenCode.
+OpenCode Most to silnie zmodyfikowany widelec (fork) projektu [yuga-hashimoto/opencode-chatgpt-bridge](https://github.com/yuga-hashimoto/opencode-chatgpt-bridge). Łączy ChatGPT z lokalnym środowiskiem OpenCode przez endpoint MCP i bezpieczny tunel, oraz wspomaga koordynację wielu agentów OpenCode równolegle bez przełączania się między ChatGPT a OpenCode.
+Program nie jest związany w żaden sposób z projektem OpenCode ani ChatGPT.
 
-Niniejsze repozytorium nie jest niezmodyfikowanym wydaniem źródłowym. Dodaje przepływy pracy wieloagentowe, trwałe obsługę sesji, bogatszy wybór modeli i agentów, diagnostykę oraz zarządzany przepływ tunelu.
+Niniejsze repozytorium nie jest niezmodyfikowanym wydaniem źródłowym. Dodaje przepływy pracy wieloagentowe, trwałe obsługę sesji, zarządzany przepływ tunelu.
 
 To samodzielny projekt skoncentrowany na przypadku użycia mostu ChatGPT <-> OpenCode.
 
 ```text
-ChatGPT / ChatGPT Mobile
+  -> ChatGPT
   -> bezpieczny tunel HTTPS
   -> opencode-most /mcp
   -> lokalny opencode serve
   -> lokalne repozytorium
 ```
 
+<img src="assets/icons/logo.png" width="25%">
+
 ## Szybki start
+
+Pełna instrukcja instalacji znajduje się w [INSTALL_pl.md](INSTALL_pl.md).
 
 Po opublikowaniu swojego widelca, zamień poniższy adres URL klonowania na adres URL swojego repozytorium `opencode-most`.
 
 ```bash
-git clone <adres-url-twojego-repozytorium-opencode-most>
+git clone https://github.com/frs777/opencode-most
 cd opencode-most
 pnpm install
 pnpm run build
@@ -113,7 +118,7 @@ pnpm run install-user-service
 systemctl --user status opencode-most.target opencode-most.service opencode-most-tunnel.service
 ```
 
-Instalator używa istniejącego pliku `.env`, binarnego klienta tunelu i klucza tunelu. Domyślnie szuka w `$HOME/Projekty/OmniCommanderMCP/tunnel-client-v0.0.16-linux-amd64/`; ustaw `TUNNEL_DIR`, `TUNNEL_BIN` lub `TUNNEL_KEY`, aby nadpisać te ścieżki. Klucz jest dostarczany do systemd przez `LoadCredential=`; nie jest kopiowany do tego repozytorium ani nie jest osadzany w pliku jednostki. Instalator odmawia nadpisania jednostek, których nie posiada, ale może bezpiecznie odświeżyć jednostki zainstalowane wcześniej przez OpenCode Most.
+Instalator używa istniejącego pliku `.env`, binarnego klienta tunelu(tunel-client) i klucza tunelu. Ustaw `TUNNEL_DIR`, `TUNNEL_BIN` lub `TUNNEL_KEY`, aby nadpisać te ścieżki. Klucz jest dostarczany do systemd przez `LoadCredential=`; nie jest kopiowany do tego repozytorium ani nie jest osadzany w pliku jednostki. Instalator odmawia nadpisania jednostek, których nie posiada, ale może bezpiecznie odświeżyć jednostki zainstalowane wcześniej przez OpenCode Most.
 
 Aby usunąć tylko jednostki użytkownika OpenCode Most:
 
@@ -135,9 +140,9 @@ https://chatgpt.com/#settings/Connectors
 
 ```text
 Ustawienia -> Aplikacje i konektory -> Ustawienia zaawansowane -> włącz tryb deweloperski
-Ustawienia -> Konektory -> Utwórz
+Wtyczki -> Dodaj -> Dodaj niestandartowy serwer MCP
 ```
-
+`
 Użyj wartości wydrukowanych przez most. Wyglądają one tak:
 
 ```text
@@ -241,10 +246,12 @@ pnpm run validate
 
 MIT
 
-### Dokumentacja
+### Dokumentacja architektury
 
-Zobacz [`docs/README.md`](docs/README.md) dla indeksu dokumentacji, w tym notatki dotyczące cyklu życia sesji, polityki modeli, mapy drogowej i notatek badawczych.
+Pełna dokumentacja architektury, w tym granice modułów, punkty wejścia, cykl życia sesji, przepływ żądań, bezpieczeństwo i uwierzytelnianie, znajduje się w [`docs/ARCHITECTURE_pl.md`](docs/ARCHITECTURE_pl.md) (wersja polska) oraz [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (wersja angielska). Pliki te są wyjątkiem od ignorowania katalogu `docs/` i są dostępne w publicznym repozytorium.
 
-### Cykl życia sesji i usuwanie
+## Author
 
-Zobacz [`docs/session-lifecycle.md`](docs/session-lifecycle.md) dla trwałego przepływu pracy sesji, powiadomień o zakończeniu, wyboru modeli i agentów oraz strzeżonej procedury usuwania. Historia implementacji i bieżący rekord weryfikacji znajdują się w [`docs/CHANGELOG.md`](docs/CHANGELOG.md).
+<img src="assets/images/frs.png" width="10%">
+
+**frs** — mail: [59541810+frs777@users.noreply.github.com](mailto:59541810+frs777@users.noreply.github.com)

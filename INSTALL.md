@@ -4,8 +4,8 @@ Local MCP bridge connecting ChatGPT to an OpenCode server running on your comput
 
 ## Requirements
 
-- Node.js 20 or newer
-- pnpm 11.18.0 (pinned in `package.json`; Corepack recommended)
+- Node.js version 20 or newer
+- pnpm version 11.18.0 (pinned in `package.json`; Corepack recommended)
 - OpenCode installed and configured locally
 - HTTPS endpoint/tunnel only when the bridge must be reachable remotely
 - `cloudflared` when using the Cloudflare tunnel, or Tailscale when using Tailscale Funnel (both optional if you provide your own HTTPS endpoint)
@@ -13,7 +13,7 @@ Local MCP bridge connecting ChatGPT to an OpenCode server running on your comput
 ## Installation
 
 ```bash
-git clone <your-opencode-most-repository-url>
+git clone https://github.com/frs777/opencode-most.git
 cd opencode-most
 pnpm install
 pnpm run build
